@@ -1,0 +1,38 @@
+>Sequence0 fragment0 corresponding to text: circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow"  encoded with seed 0. Maximum fragment size 84 which includes an overlap of 7 bases.
+CGATCGGCCTAGCGATCGTACGCCAGAACGATCTGAATTCAGAGATCCATAAAGAGAGAACGATCTGCATTCAGAGATCCATAA
+>Sequence0 fragment1 corresponding to text: circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow"  encoded with seed 0. Maximum fragment size 84 which includes an overlap of 7 bases.
+TCCATAAAGAGAGAACTAGATTCAGAGATCAATAAAGAGAGAACTATCTCACTAGCGTTCGGTCGCCATTCAGAGCGCTCTAGC
+>Sequence0 fragment2 corresponding to text: circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow"  encoded with seed 0. Maximum fragment size 84 which includes an overlap of 7 bases.
+CTCTAGCGCCCGCCCGTGAGAGAGAACTATCTCACTAGCGTTCGGTCGCCAGTCCTCTCGGCCGCACTCACGGAATTCAGAGAT
+>Sequence0 fragment3 corresponding to text: circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow"  encoded with seed 0. Maximum fragment size 84 which includes an overlap of 7 bases.
+CAGAGATCAAGAGAGAACGCGCGGCCGTACGTAATTCAGAGCTGCCGCCCGTACGTACGTTCTCTAGAGAGAA
+>Sequence2 fragment0 corresponding to text: circle cx="35" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 1. Maximum fragment size 82 which includes an overlap of 7 bases.
+AAATTTAATTATCACTGTAAGTGCGGTAACTTTCTCGATGCTCAGGTGCTCAAGCAGCCAGAGAAGTTATGTACAGCCCAGT
+>Sequence2 fragment1 corresponding to text: circle cx="35" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 1. Maximum fragment size 82 which includes an overlap of 7 bases.
+GCCCAGTCAGCGATTATACGCGGTTCTGCATGGGAGACAGAGATTCCTCAGGGCTGACTCACAATGGTTAAACCAGTCTTAG
+>Sequence2 fragment2 corresponding to text: circle cx="35" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 1. Maximum fragment size 82 which includes an overlap of 7 bases.
+GTCTTAGGCGTGCCAGCTAGATTGCAGCCACTTTGAATGCAATAGATTAGACTGAGAAATGGCAAAAGTAAATCTGTCGCCG
+>Sequence2 fragment3 corresponding to text: circle cx="35" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 1. Maximum fragment size 82 which includes an overlap of 7 bases.
+GTCGCCGGCATCCGTCGCAAGAAATAACCGGCGACGTAGTGCATACTACTGCCAACATCCCCTCAAGATTG
+>Sequence4 fragment0 corresponding to text: circle cx="65" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 2. Maximum fragment size 82 which includes an overlap of 7 bases.
+AGCTACTGTCTGTGACACTAGTTTACTTGTCAAAACAGGGCAGGATAACTGATGGGAATGCACCTAGGACTAAGCTAAGACA
+>Sequence4 fragment1 corresponding to text: circle cx="65" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 2. Maximum fragment size 82 which includes an overlap of 7 bases.
+TAAGACATAACCTTTTAAGGACTAAGCGGCTGTTTTCACCACGACCAACTAAGCGAGACAACTTGATCACTGTTGGCGCGAC
+>Sequence4 fragment2 corresponding to text: circle cx="65" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 2. Maximum fragment size 82 which includes an overlap of 7 bases.
+GCGCGACATGAGGAAGTCTCCCGTGCATGATGTTCGCCCGTGTGGCCATTTACACGGCACCGTGCGCACGACTTATGAAGCC
+>Sequence4 fragment3 corresponding to text: circle cx="65" cy="35" r="5" stroke="black" stroke-width="1" fill="black"  encoded with seed 2. Maximum fragment size 82 which includes an overlap of 7 bases.
+TGAAGCCGCTCTATTATAATAAGGCTACGAGCGTATCGACAGTGCGGCCTCACCAAATGGTTGACAACAAT
+>Sequence6 fragment0 corresponding to text: line x1="30" y1="60" x2="65" y2="60" stroke="black" stroke-width="2"  encoded with seed 1. Maximum fragment size 100 which includes an overlap of 7 bases.
+AATATTAATGTTCAACTTTAGGCAGTTCCAACGACTGAAACGCGGTTTCGACCTTTGACCTCCGCTCAATAAAAAACACCGGACTAAGTGACCCCGGTAA
+>Sequence6 fragment1 corresponding to text: line x1="30" y1="60" x2="65" y2="60" stroke="black" stroke-width="2"  encoded with seed 1. Maximum fragment size 100 which includes an overlap of 7 bases.
+CCGGTAACGTCATGGGAGACAGAGACCACGTCGCCATCCAGGCACCGGTAAAAATCCGGCGCAGTCCTGGCAGCTCGCATTGCTACCCGGCGCTCGCTGT
+>Sequence6 fragment2 corresponding to text: line x1="30" y1="60" x2="65" y2="60" stroke="black" stroke-width="2"  encoded with seed 1. Maximum fragment size 100 which includes an overlap of 7 bases.
+TCGCTGTAAATTTAACACCTCTAGAACCAAAGGGAAGGGTGTTCACGATTAATGAGTCAGAGAGTCCCTGATAAGGTCTTCAGACTCCAG
+>Sequence8 fragment0 corresponding to text: path d="M35 55 A1 1 0 0 0 65 55" fill="none" stroke="red" stroke-width="4"  encoded with seed 1. Maximum fragment size 83 which includes an overlap of 7 bases.
+ACAATTGATTCCCATATTTAGTGAGTACCCTGTGGAGAAACGATGTTCCTCAATATGCCAGGGGCGCTAGCGAAACCACTGTA
+>Sequence8 fragment1 corresponding to text: path d="M35 55 A1 1 0 0 0 65 55" fill="none" stroke="red" stroke-width="4"  encoded with seed 1. Maximum fragment size 83 which includes an overlap of 7 bases.
+CACTGTACGCGGTGATCAGTGGAGCTGTATGCGCTTCAGATAGCACTACTGGATCTCTGCCATTTTTGCATTACCAATAGGGG
+>Sequence8 fragment2 corresponding to text: path d="M35 55 A1 1 0 0 0 65 55" fill="none" stroke="red" stroke-width="4"  encoded with seed 1. Maximum fragment size 83 which includes an overlap of 7 bases.
+ATAGGGGCTGGCAGAGCGCATGCGTACTCTGAGACCGATCTATATTTACCCGCGGGCTACCCCGATTCAAACTTAGGCCATCA
+>Sequence8 fragment3 corresponding to text: path d="M35 55 A1 1 0 0 0 65 55" fill="none" stroke="red" stroke-width="4"  encoded with seed 1. Maximum fragment size 83 which includes an overlap of 7 bases.
+GCCATCACAATCATCGAGGCATAGCCATAGAATTGAGGTTTAACAACGCCGCACATACTGCCCAATTACGAG
