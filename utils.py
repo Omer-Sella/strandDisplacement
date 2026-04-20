@@ -110,14 +110,17 @@ def checkGC(dnaString):
   return np.sum([1 for n in dnaString if (n=='C' or n=='G')]) / len(dnaString)
 
 def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary):
-    K = 50
+    # What is K is the maximum similarity score that we allow between the candidate DNA sequence and any of the DNA sequences already in the library. 
+    # Note that the similarity score is not a distance, but a similarity, so higher is more similar, and we want to be below K.
+    maximumSimilarity = 50
     MAX_HOMOPOLYMER = 8
+    # Omer: are these GC numbers ok ?
     GC_LOW = 0.2
     GC_HIGH = 0.8
     # We're going to use seeds between 0 and maximumSeed-1 (you can replace numberOfBits with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
     maximumSeed = 256
     #for s in textLibrary[1:]:
-    similarityScore = K + 1
+    similarityScore = maximumSimilarity + 1
     unscrambledDNA = byteToBases(binaryToBeCommitted, len(binaryToBeCommitted))
     nextCandidateDNA = copy.copy(unscrambledDNA)
     localRandom = np.random.RandomState(0)
@@ -133,15 +136,17 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary):
         # Get the similarity scores between the candidate and every DNA already commited to the library
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
-            similarityScore = 0;
+            similarityScore = 0
         else:
             scores = [aligner.score(seq(nextCandidateDNA), targetSeq) for targetSeq in dnaLibrary]
             #For debug purposes we can look at the alignments found, but this takes a very long time.
             #local_alignments = aligner.align(seq(nextCandidateDNA), dnaLibrary[0])
             #[print(l) for l in local_alignments]
             #the highest similarity score is the worst score
+            print(scores)
             similarityScore = max(scores)
-        commitable = (similarityScore < K) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
+        
+        commitable = (similarityScore < maximumSimilarity) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
         #print(f"Attempting to commit using seed == {i}")
         if commitable: 
             scrambledDNA = seq(nextCandidateDNA)
@@ -163,9 +168,9 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary):
             assert(checkUnscrambledDNA == unscrambledDNA)
         if i == maximumSeed:
             print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
-            raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity.")
+            raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity, and specifically changing K.")
 
-    return scrambledDNA, unscrambledDNA, i, scramble1, similarityScore
+    return nextCandidateDNA, unscrambledDNA, i, scramble1, similarityScore
 
 def binaryLibraryToDnaLibrary(binaryLibrary):
     dnaLibrary = [] #We start with an empty library seq0, seq0.reverse_complement()]
@@ -371,16 +376,21 @@ def _encode_bits_to_dna_with_seed(bitstring: str, dna_library_context):
 
 
 def png_to_dna_chunks(png_path: str, k_bits: int):
+    # Chunk is a dictionary made of: PNG details (header, checksum and other names), binary that corresponds to it, translation to DNA using the function from last time AND which seed was used
+    # read the png as bytes
     png_bytes = Path(png_path).read_bytes()
+    # Slicing the bytes acccording to how many bits we want ineach strand
     bit_chunks = build_png_bit_chunks(png_bytes, k_bits)
 
     dna_chunks = []
     dna_library_context = []
+    
     for c in bit_chunks:
         dna_strand, _, seed, _, _ = commitSingleBinaryToDnaLibrary(
             c['bits'],
             dnaLibrary=dna_library_context
         )
+        # Builds the dna_chunks incrementally
         dna_chunks.append({
             **c,
             'dna': str(dna_strand),
