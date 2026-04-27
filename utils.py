@@ -2,7 +2,6 @@ import numpy as np
 # Omer@Ilaria - is this a good enough metric ?
 from Bio import Align, pairwise2
 from Bio.Seq import Seq as seq
-import numpy as np
 import pandas as pd
 import zlib
 import copy
@@ -21,6 +20,51 @@ aligner.mismatch_score = -1
 #aligner.gap_score = 0 # No penalty or gain for gaps
 aligner.open_gap_score = -1
 aligner.extend_gap_score = -1
+
+from Bio.SeqUtils.MeltingTemp import Tm_NN
+from Bio.Seq import Seq
+
+def tmApproximation(seq1, seq2):
+    #seq1 = "ATGCATGCATGC"
+    #seq2 = "GCATGCATGCAT"  # 5'→3' of the other strand (not necessarily perfect complement)
+
+    tm = Tm_NN(
+        Seq(seq1),
+        c_seq=seq2,        # the counter-strand sequence, 3'→5' direction
+        Na=50,
+        dnac1=250,
+        dnac2=250,
+        saltcorr=5         # Owczarzy 2004 salt correction
+    )
+    #print(f"Tm: {tm:.2f} °C")
+    return tm
+
+def gibbsFreeEnergy(seq1, seq2, Na=50, dnac1=250, dnac2=250):
+    """
+    Calculate the free Gibbs energy between two DNA sequences (not necessarily complementary).
+    Uses nearest-neighbor thermodynamics model from Bio.SeqUtils.
+    
+    Args:
+        seq1: First DNA sequence (string)
+        seq2: Second DNA sequence (string, 3'→5' direction)
+        Na: Sodium concentration in mM (default: 50)
+        dnac1: Concentration of seq1 in nM (default: 250)
+        dnac2: Concentration of seq2 in nM (default: 250)
+    
+    Returns:
+        dG: Free Gibbs energy in kcal/mol
+    """
+    from Bio.SeqUtils.MeltingTemp import deltaG_NN
+    
+    dG = deltaG_NN(
+        Seq(seq1),
+        c_seq=seq2,
+        Na=Na,
+        dnac1=dnac1,
+        dnac2=dnac2,
+        saltcorr=5         # Owczarzy 2004 salt correction
+    )
+    return dG
 
 def basesToBytes(inputBases):
   if type(inputBases) != str:
@@ -109,18 +153,25 @@ def checkHomopolymer(dnaString):
 def checkGC(dnaString):
   return np.sum([1 for n in dnaString if (n=='C' or n=='G')]) / len(dnaString)
 
-def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary):
+def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimilarity = 70):
     # What is K is the maximum similarity score that we allow between the candidate DNA sequence and any of the DNA sequences already in the library. 
     # Note that the similarity score is not a distance, but a similarity, so higher is more similar, and we want to be below K.
-    maximumSimilarity = 50
+    # Omer: we said that what we'll use for similarity is the maximum score that biopython can find as an alignment score between the candidate DNA and ANY already existing DNA in the dna library so far.
+    # So this has to somehow take into acount the sequence length, because if for example: maximumSimilarity is 100 and the DNA strands are <100 then they can get quite similar
+    # Update: Omer: after reviewing with Ilaria, we decided to use melting temp. (tm) as an appoximation to free Gibbs energy, istead of sequence alignment
+    # What this means is higher temperature is more "similar" meaning more likely to hybradize.
+    # maximumSimilarity is now a default = 50 # Omer: so now this needs to be defined as temperature
+    
+    similarityScore = maximumSimilarity + 1000 # Omer: what this means is that initially we set the similarity score to be very high.
     MAX_HOMOPOLYMER = 8
+    LOW_SIMILARITY_SCORE = 20 #Omer: this what we consider non similar, given degrees in celsius
     # Omer: are these GC numbers ok ?
     GC_LOW = 0.2
     GC_HIGH = 0.8
     # We're going to use seeds between 0 and maximumSeed-1 (you can replace numberOfBits with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
     maximumSeed = 256
     #for s in textLibrary[1:]:
-    similarityScore = maximumSimilarity + 1
+    
     unscrambledDNA = byteToBases(binaryToBeCommitted, len(binaryToBeCommitted))
     nextCandidateDNA = copy.copy(unscrambledDNA)
     localRandom = np.random.RandomState(0)
@@ -136,14 +187,20 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary):
         # Get the similarity scores between the candidate and every DNA already commited to the library
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
-            similarityScore = 0
+            similarityScore = LOW_SIMILARITY_SCORE 
         else:
-            scores = [aligner.score(seq(nextCandidateDNA), targetSeq) for targetSeq in dnaLibrary]
+            # Omer: we are no longer using alignment,  = [aligner.score(seq(nextCandidateDNA), targetSeq) for targetSeq in dnaLibrary]
+            # instead we're using TM scores
+            print(nextCandidateDNA)
+            for d in dnaLibrary:
+                print(d)
+            scores = [tmApproximation(nextCandidateDNA, targetSeq) for targetSeq in dnaLibrary]
             #For debug purposes we can look at the alignments found, but this takes a very long time.
             #local_alignments = aligner.align(seq(nextCandidateDNA), dnaLibrary[0])
             #[print(l) for l in local_alignments]
             #the highest similarity score is the worst score
-            print(scores)
+            #print(scores)
+            # Omer: we want (!) the candidateDNA to be non-similar to any of the DNA in the library, so we take the maximum (most similar) result, and later check that it is less than the maximum allowed similarity.
             similarityScore = max(scores)
         
         commitable = (similarityScore < maximumSimilarity) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
@@ -168,9 +225,9 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary):
             assert(checkUnscrambledDNA == unscrambledDNA)
         if i == maximumSeed:
             print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
-            raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity, and specifically changing K.")
+            raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity by lowering the maximal allowed TM == maximumSimilarity.")
 
-    return nextCandidateDNA, unscrambledDNA, i, scramble1, similarityScore
+    return scrambledDNA, unscrambledDNA, i, scramble1, similarityScore
 
 def binaryLibraryToDnaLibrary(binaryLibrary):
     dnaLibrary = [] #We start with an empty library seq0, seq0.reverse_complement()]
@@ -651,3 +708,102 @@ def update_plte_entry_in_dna_chunks(dna_chunks, palette_index: int, new_rgb, in_
         bit_modifier=_modify,
         in_place=in_place
     )
+
+
+import primer3
+
+def binding_metrics(seq1, seq2,
+                    mv_conc=50.0,   # monovalent ions, mM
+                    dv_conc=1.5,    # divalent ions, mM
+                    dntp_conc=0.6,  # dNTP, mM
+                    dna_conc=50.0,  # oligo concentration, nM
+                    temp_c=37.0):
+    """
+    Return thermodynamic metrics for possible binding between two DNA oligos.
+    """
+    hetero = primer3.calc_heterodimer(
+        seq1, seq2,
+        mv_conc=mv_conc,
+        dv_conc=dv_conc,
+        dntp_conc=dntp_conc,
+        dna_conc=dna_conc,
+        temp_c=temp_c,
+        output_structure=True,
+    )
+
+    end_stab = primer3.calc_end_stability(
+        seq1, seq2,
+        mv_conc=mv_conc,
+        dv_conc=dv_conc,
+        dntp_conc=dntp_conc,
+        dna_conc=dna_conc,
+        temp_c=temp_c,
+    )
+
+    return {
+        "heterodimer_dg": hetero.dg,
+        "heterodimer_tm": hetero.tm,
+        "heterodimer_dh": hetero.dh,
+        "heterodimer_ds": hetero.ds,
+        "heterodimer_structure_found": hetero.structure_found,
+        "heterodimer_structure": getattr(hetero, "ascii_structure_lines", None),
+        "end_stability_dg": end_stab.dg,
+        "end_stability_tm": end_stab.tm,
+    }
+
+seq1 = "ATGCGTACGTTAGC"
+seq2 = "GCTAACGTACGCAT"
+
+result = binding_metrics(seq1, seq2)
+
+def binds_too_strongly(seq1, seq2,
+                       dg_cutoff=-6000,   # example threshold
+                       end_dg_cutoff=-4000,
+                       tm_cutoff=25.0):
+    """
+    Reject sequence pairs that are predicted to bind too strongly.
+
+    Note: Primer3 returns very negative dg for stronger binding.
+    Exact units/scale depend on the library's thermodynamic reporting,
+    so calibrate cutoffs on your own dataset and conditions.
+    """
+    hetero = primer3.calc_heterodimer(seq1, seq2, temp_c=37.0)
+    end_stab = primer3.calc_end_stability(seq1, seq2, temp_c=37.0)
+
+    bad_global_binding = hetero.dg <= dg_cutoff or hetero.tm >= tm_cutoff
+    bad_3prime_binding = end_stab.dg <= end_dg_cutoff
+
+    return bad_global_binding or bad_3prime_binding
+
+def filter_nonsticky_pairs(seq_pairs,
+                           dg_cutoff=-6000,
+                           end_dg_cutoff=-4000,
+                           tm_cutoff=25.0):
+    kept = []
+    rejected = []
+
+    for seq1, seq2 in seq_pairs:
+        hetero = primer3.calc_heterodimer(seq1, seq2, temp_c=37.0)
+        end_stab = primer3.calc_end_stability(seq1, seq2, temp_c=37.0)
+
+        too_strong = (
+            hetero.dg <= dg_cutoff or
+            hetero.tm >= tm_cutoff or
+            end_stab.dg <= end_dg_cutoff
+        )
+
+        record = {
+            "seq1": seq1,
+            "seq2": seq2,
+            "heterodimer_dg": hetero.dg,
+            "heterodimer_tm": hetero.tm,
+            "end_stability_dg": end_stab.dg,
+        }
+
+        if too_strong:
+            rejected.append(record)
+        else:
+            kept.append(record)
+
+    return kept, rejected
+ 
