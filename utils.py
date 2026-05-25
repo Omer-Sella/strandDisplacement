@@ -1,70 +1,32 @@
 import numpy as np
 # Omer@Ilaria - is this a good enough metric ?
-from Bio import Align, pairwise2
-from Bio.Seq import Seq as seq
+#from Bio import Align, pairwise2
+from Bio.Seq import Seq as seq #Omer: The only place where we should be using biopython is to otain a reverse complement sequence.
 import pandas as pd
 import zlib
 import copy
 
 # Declaring / instantiating an alignment function
-aligner = Align.PairwiseAligner()
-aligner.mode = 'local'
+#aligner = Align.PairwiseAligner()
+#aligner.mode = 'local'
 from pathlib import Path
 from PIL import Image
 from IPython.display import display
 #AAAAAAAAAAAAGGGGGGGGGGGGGGGG
 #            CCCCCCCCCCCCCCAAAAAAAAAAAAAAAAA
 # See potential penalties to be defined here: https://biopython.org/docs/latest/Tutorial/chapter_pairwise.html#chapter-pairwise
-aligner.match_score = 1 # Each match counts as 1
-aligner.mismatch_score = -1
+#aligner.match_score = 1 # Each match counts as 1
+#aligner.mismatch_score = -1
 #aligner.gap_score = 0 # No penalty or gain for gaps
-aligner.open_gap_score = -1
-aligner.extend_gap_score = -1
+#aligner.open_gap_score = -1
+#aligner.extend_gap_score = -1
 
-from Bio.SeqUtils.MeltingTemp import Tm_NN
-from Bio.Seq import Seq
+#from Bio.SeqUtils.MeltingTemp import Tm_NN
+#from Bio.Seq import Seq
 
-def tmApproximation(seq1, seq2):
-    #seq1 = "ATGCATGCATGC"
-    #seq2 = "GCATGCATGCAT"  # 5'→3' of the other strand (not necessarily perfect complement)
+from nupack import pfunc, Model
+from nupack import mfe, Complex, Strand, Model
 
-    tm = Tm_NN(
-        Seq(seq1),
-        c_seq=seq2,        # the counter-strand sequence, 3'→5' direction
-        Na=50,
-        dnac1=250,
-        dnac2=250,
-        saltcorr=5         # Owczarzy 2004 salt correction
-    )
-    #print(f"Tm: {tm:.2f} °C")
-    return tm
-
-def gibbsFreeEnergy(seq1, seq2, Na=50, dnac1=250, dnac2=250):
-    """
-    Calculate the free Gibbs energy between two DNA sequences (not necessarily complementary).
-    Uses nearest-neighbor thermodynamics model from Bio.SeqUtils.
-    
-    Args:
-        seq1: First DNA sequence (string)
-        seq2: Second DNA sequence (string, 3'→5' direction)
-        Na: Sodium concentration in mM (default: 50)
-        dnac1: Concentration of seq1 in nM (default: 250)
-        dnac2: Concentration of seq2 in nM (default: 250)
-    
-    Returns:
-        dG: Free Gibbs energy in kcal/mol
-    """
-    from Bio.SeqUtils.MeltingTemp import deltaG_NN
-    
-    dG = deltaG_NN(
-        Seq(seq1),
-        c_seq=seq2,
-        Na=Na,
-        dnac1=dnac1,
-        dnac2=dnac2,
-        saltcorr=5         # Owczarzy 2004 salt correction
-    )
-    return dG
 
 def basesToBytes(inputBases):
   if type(inputBases) != str:
@@ -141,13 +103,6 @@ def checkHomopolymer(dnaString):
           currentRun = 1
       return maxRun
 
-#Let's check that DNAAddition of a scramble is an order 2 operator (so adding the same scramble twice is the identity):
-#dna1 = "AAATTTTTTT"
-#print(basesToBytes(dna1))
-#scramble = "TTTAAAAAAA"
-#scrambledDNA = addScrambleToDnaSequence(dna1, scramble)
-#print(f"{dna1} + {scramble} == {scrambledDNA}")
-#print(f"{scrambledDNA} + {scramble} == {addScrambleToDnaSequence(scrambledDNA, scramble)}")
 
 
 def checkGC(dnaString):
@@ -162,10 +117,11 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimil
     # What this means is higher temperature is more "similar" meaning more likely to hybradize.
     # maximumSimilarity is now a default = 50 # Omer: so now this needs to be defined as temperature
     
-    similarityScore = maximumSimilarity + 1000 # Omer: what this means is that initially we set the similarity score to be very high.
+    #similarityScore = maximumSimilarity + 1000 # Omer: what this means is that initially we set the similarity score to be very high.
+    
+    #LOW_SIMILARITY_SCORE = 20 #Omer: this what we consider non similar, given degrees in celsius
+    STABILITY_THRESHOLD = -12 #Omer: this is the threshold for stability. The lower this is, the more we allow for stable hybridization to occur.
     MAX_HOMOPOLYMER = 8
-    LOW_SIMILARITY_SCORE = 20 #Omer: this what we consider non similar, given degrees in celsius
-    # Omer: are these GC numbers ok ?
     GC_LOW = 0.2
     GC_HIGH = 0.8
     # We're going to use seeds between 0 and maximumSeed-1 (you can replace numberOfBits with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
@@ -179,7 +135,6 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimil
     #scrambledDNA = seq(addScrambleToDnaSequence(unscrambledDNA, scramble1))
     #print(f"Attempting to commit {unscrambledDNA}")
     i = 0
-    bestSimilarityScore = np.inf
     bestSeed = 0
     commitable = False
     
@@ -187,26 +142,29 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimil
         # Get the similarity scores between the candidate and every DNA already commited to the library
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
-            similarityScore = LOW_SIMILARITY_SCORE 
+            stabilityScore =  STABILITY_THRESHOLD + 10
         else:
             # Omer: we are no longer using alignment,  = [aligner.score(seq(nextCandidateDNA), targetSeq) for targetSeq in dnaLibrary]
-            # instead we're using TM scores
-            print(nextCandidateDNA)
-            for d in dnaLibrary:
-                print(d)
-            scores = [tmApproximation(nextCandidateDNA, targetSeq) for targetSeq in dnaLibrary]
-            #For debug purposes we can look at the alignments found, but this takes a very long time.
-            #local_alignments = aligner.align(seq(nextCandidateDNA), dnaLibrary[0])
-            #[print(l) for l in local_alignments]
-            #the highest similarity score is the worst score
-            #print(scores)
-            # Omer: we want (!) the candidateDNA to be non-similar to any of the DNA in the library, so we take the maximum (most similar) result, and later check that it is less than the maximum allowed similarity.
-            similarityScore = max(scores)
+            # Define a NUPACK complex that contains all the strands in the dna library AND the nextCandidateDNA
+            dnaLibraryANDnextCandidateDNA = dnaLibrary + [nextCandidateDNA] # Create a single list that contains everything from previous steps, i.e. dna library, AND the next candidate DNA
+            dnaLibraryAsComplex = Complex([Strand(string=s, name=f'strand_{s}') for s in dnaLibraryANDnextCandidateDNA])
+            model = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK. We could actually create it only once instead of every time, but for readability I placed it here.
+            # Use the mfe function 
+            # Takes a Complex object (list of strands) as input
+            # Accepts a NUPACK model parameter
+            # Returns a list of structures sorted by free energy
+            # [0] gets the lowest energy (most stable) structure
+            # .energy extracts the ΔG value in kcal/mol
+            print(f"Attempting mfe call with library {dnaLibraryANDnextCandidateDNA} ")
+            stabilityScore = mfe(dnaLibraryAsComplex, model=model)[0].energy 
+            print(stabilityScore)
+            
         
-        commitable = (similarityScore < maximumSimilarity) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
+        commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
         #print(f"Attempting to commit using seed == {i}")
         if commitable: 
-            scrambledDNA = seq(nextCandidateDNA)
+            #scrambledDNA = seq(nextCandidateDNA)
+            scrambledDNA = nextCandidateDNA
         # The while loop will break after this
         else:
             # Prepare next attempt of DNA sequence
@@ -227,7 +185,7 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimil
             print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
             raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity by lowering the maximal allowed TM == maximumSimilarity.")
 
-    return scrambledDNA, unscrambledDNA, i, scramble1, similarityScore
+    return scrambledDNA, unscrambledDNA, i, scramble1, stabilityScore
 
 def binaryLibraryToDnaLibrary(binaryLibrary):
     dnaLibrary = [] #We start with an empty library seq0, seq0.reverse_complement()]
@@ -454,8 +412,8 @@ def png_to_dna_chunks(png_path: str, k_bits: int):
             'seed': int(seed),
         })
         # Keep both strand and reverse-complement in context, matching library rules.
-        dna_library_context.append(seq(str(dna_strand)))
-        dna_library_context.append(seq(str(dna_strand)).reverse_complement())
+        dna_library_context.append(dna_strand)
+        dna_library_context.append(str(seq(str(dna_strand)).reverse_complement()))
 
     return dna_chunks
 
@@ -598,7 +556,8 @@ def update_plte_bits_in_dna_chunks(dna_chunks, new_plte_bits=None, bit_modifier=
     plte_palette_items.sort(key=lambda x: x['subchunk_index'])
     checksum_items.sort(key=lambda x: x['subchunk_index'])
     changed_item_ids = {id(item) for item in plte_palette_items + checksum_items}
-    unchanged_context = [seq(c['dna']) for c in target if id(c) not in changed_item_ids]
+    #unchanged_context = [seq(c['dna']) for c in target if id(c) not in changed_item_ids]
+    unchanged_context = [c['dna'] for c in target if id(c) not in changed_item_ids]
 
     original_plte_bits = ''.join(c['bits'][:c.get('valid_bits', len(c['bits']))] for c in plte_palette_items)
     if new_plte_bits is None:
@@ -708,102 +667,3 @@ def update_plte_entry_in_dna_chunks(dna_chunks, palette_index: int, new_rgb, in_
         bit_modifier=_modify,
         in_place=in_place
     )
-
-
-import primer3
-
-def binding_metrics(seq1, seq2,
-                    mv_conc=50.0,   # monovalent ions, mM
-                    dv_conc=1.5,    # divalent ions, mM
-                    dntp_conc=0.6,  # dNTP, mM
-                    dna_conc=50.0,  # oligo concentration, nM
-                    temp_c=37.0):
-    """
-    Return thermodynamic metrics for possible binding between two DNA oligos.
-    """
-    hetero = primer3.calc_heterodimer(
-        seq1, seq2,
-        mv_conc=mv_conc,
-        dv_conc=dv_conc,
-        dntp_conc=dntp_conc,
-        dna_conc=dna_conc,
-        temp_c=temp_c,
-        output_structure=True,
-    )
-
-    end_stab = primer3.calc_end_stability(
-        seq1, seq2,
-        mv_conc=mv_conc,
-        dv_conc=dv_conc,
-        dntp_conc=dntp_conc,
-        dna_conc=dna_conc,
-        temp_c=temp_c,
-    )
-
-    return {
-        "heterodimer_dg": hetero.dg,
-        "heterodimer_tm": hetero.tm,
-        "heterodimer_dh": hetero.dh,
-        "heterodimer_ds": hetero.ds,
-        "heterodimer_structure_found": hetero.structure_found,
-        "heterodimer_structure": getattr(hetero, "ascii_structure_lines", None),
-        "end_stability_dg": end_stab.dg,
-        "end_stability_tm": end_stab.tm,
-    }
-
-seq1 = "ATGCGTACGTTAGC"
-seq2 = "GCTAACGTACGCAT"
-
-result = binding_metrics(seq1, seq2)
-
-def binds_too_strongly(seq1, seq2,
-                       dg_cutoff=-6000,   # example threshold
-                       end_dg_cutoff=-4000,
-                       tm_cutoff=25.0):
-    """
-    Reject sequence pairs that are predicted to bind too strongly.
-
-    Note: Primer3 returns very negative dg for stronger binding.
-    Exact units/scale depend on the library's thermodynamic reporting,
-    so calibrate cutoffs on your own dataset and conditions.
-    """
-    hetero = primer3.calc_heterodimer(seq1, seq2, temp_c=37.0)
-    end_stab = primer3.calc_end_stability(seq1, seq2, temp_c=37.0)
-
-    bad_global_binding = hetero.dg <= dg_cutoff or hetero.tm >= tm_cutoff
-    bad_3prime_binding = end_stab.dg <= end_dg_cutoff
-
-    return bad_global_binding or bad_3prime_binding
-
-def filter_nonsticky_pairs(seq_pairs,
-                           dg_cutoff=-6000,
-                           end_dg_cutoff=-4000,
-                           tm_cutoff=25.0):
-    kept = []
-    rejected = []
-
-    for seq1, seq2 in seq_pairs:
-        hetero = primer3.calc_heterodimer(seq1, seq2, temp_c=37.0)
-        end_stab = primer3.calc_end_stability(seq1, seq2, temp_c=37.0)
-
-        too_strong = (
-            hetero.dg <= dg_cutoff or
-            hetero.tm >= tm_cutoff or
-            end_stab.dg <= end_dg_cutoff
-        )
-
-        record = {
-            "seq1": seq1,
-            "seq2": seq2,
-            "heterodimer_dg": hetero.dg,
-            "heterodimer_tm": hetero.tm,
-            "end_stability_dg": end_stab.dg,
-        }
-
-        if too_strong:
-            rejected.append(record)
-        else:
-            kept.append(record)
-
-    return kept, rejected
- 
