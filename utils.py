@@ -16,9 +16,9 @@ from IPython.display import display
 
 
 
-#from nupack import pfunc, Model
-#from nupack import mfe, Complex, Strand, Model
-#MODEL_FOR_NUPACK = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK once at the beginning of life
+from nupack import pfunc, Model
+from nupack import mfe, Complex, Strand, Model
+MODEL_FOR_NUPACK = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK once at the beginning of life
 
 def basesToBytes(inputBases):
   if type(inputBases) != str:
@@ -122,42 +122,34 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartF
     i = seedToStartFrom
     commitable = False
     while (i< maximumSeed) and not commitable:
+        # Set the local random number generator to the current seed 
         localRandom = np.random.RandomState(i)
+        # Generate a scramble
         scramble1 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(unscrambledDNA)))
+        # Add the scramble to the unscrambled DNA
         nextCandidateDNA = addScrambleToDnaSequence(unscrambledDNA, scramble1)
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
             stabilityScore =  STABILITY_THRESHOLD + 10
-            commitable = True
-        else:
-            print(f"Attempting seed = {i}")
-            # Data validation step: make sure that the sequence can be unscrambled:
-            #localRandom = np.random.RandomState(i)
-            #scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
-            #assert(scramble1 == scramble2)
-            #print(f"First data validation complete.")
-            #checkUnscrambledDNA = addScrambleToDnaSequence(nextCandidateDNA, scramble2)
-            #assert(checkUnscrambledDNA == unscrambledDNA)
+            #commitable = True
+        else:    
             scores = []
             for s in dnaLibrary: #Omer: for every strand, s, in the dna library so far, 
                 #Omer: create a complex made of just 2 dna strands: the candidate DNA and s 
-                #complexToBeChecked = Complex([Strand(string=s, name=f'strand_{s}'),Strand(string=nextCandidateDNA, name=f'strand_{nextCandidateDNA}')])
                 #Omer: note that this will not work if you throw all strands from the dna library together, since it contains every strand AND (!) its reverse complement (so there will be some extremely stable results there !)
-                #print(f"Attempting mfe call with strand {s} ")
-                tempScore = 1000 # mfe(complexToBeChecked, model=MODEL_FOR_NUPACK)[0].energy 
+                complexToBeChecked = Complex([Strand(string=s, name=f'strand_{s}'),Strand(string=nextCandidateDNA, name=f'strand_{nextCandidateDNA}')])
+                tempScore = mfe(complexToBeChecked, model=MODEL_FOR_NUPACK)[0].energy 
                 scores.append(tempScore)
                 if tempScore < STABILITY_THRESHOLD:
                     break # Omer: No need to keep processing if we already witnessed a stable pair
-                #print(tempScore)
             stabilityScore = min(scores)
-            #print(f"Using seed {i} got stabilityScore: {stabilityScore}")
-            commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
+        commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
         if commitable: 
             scrambledDNA = nextCandidateDNA
             #print(f"Succeeded to commit with seed {i}.")
         else:
             i = i + 1
-            #print(i)
+            # Check if we exceeded the maximal allowed seed
             if i >= maximumSeed:
                 print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
                 raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity by lowering the maximal allowed TM == maximumSimilarity.")
