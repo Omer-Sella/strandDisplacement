@@ -12,13 +12,13 @@ from tqdm import tqdm
 from pathlib import Path
 from PIL import Image
 from IPython.display import display
-from line_profiler import profile
+#from line_profiler import profile
 
 
 
-from nupack import pfunc, Model
-from nupack import mfe, Complex, Strand, Model
-MODEL_FOR_NUPACK = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK once at the beginning of life
+#from nupack import pfunc, Model
+#from nupack import mfe, Complex, Strand, Model
+#MODEL_FOR_NUPACK = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK once at the beginning of life
 
 def basesToBytes(inputBases):
   if type(inputBases) != str:
@@ -110,46 +110,43 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartF
     MAX_HOMOPOLYMER = 8
     GC_LOW = 0.2
     GC_HIGH = 0.8
-    # We're going to use seeds between 0 and maximumSeed-1 (you can replace numberOfBits with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
+    # We're going to use seeds between 0 and maximumSeed-1 (you can replace maximumSeed with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
     maximumSeed = 1000000
-    #for s in textLibrary[1:]:
-    
     unscrambledDNA = byteToBases(binaryToBeCommitted, len(binaryToBeCommitted))
     nextCandidateDNA = copy.copy(unscrambledDNA)
-    localRandom = np.random.RandomState(0)
-    scramble1 = "".join(localRandom.choice(['A'], size = len(unscrambledDNA)))
-    #scrambledDNA = seq(addScrambleToDnaSequence(unscrambledDNA, scramble1))
-    #print(f"Attempting to commit {unscrambledDNA}")
+    
+    
+    # Omer: Warning !!! if you call this function with a seedToStartFrom which is too large, you may not try to commit at all
+    if seedToStartFrom >= maximumSeed:
+        raise ValueError("Provided seed to start from is bigger than the maximum allowed seed.")
     i = seedToStartFrom
-    bestSeed = i
     commitable = False
     while (i< maximumSeed) and not commitable:
+        localRandom = np.random.RandomState(i)
+        scramble1 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(unscrambledDNA)))
+        nextCandidateDNA = addScrambleToDnaSequence(unscrambledDNA, scramble1)
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
             stabilityScore =  STABILITY_THRESHOLD + 10
             commitable = True
         else:
-            localRandom = np.random.RandomState(i)
-            # Now we have a choice, either permute or one-time-pad the DNA sequence. Right now I am only supporting permutation
-            scramble1 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
-            #nextCandidateDNABeforeScrambling = nextCandidateDNA
-            nextCandidateDNA = addScrambleToDnaSequence(unscrambledDNA, scramble1)
+            print(f"Attempting seed = {i}")
             # Data validation step: make sure that the sequence can be unscrambled:
             #localRandom = np.random.RandomState(i)
             #scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
             #assert(scramble1 == scramble2)
+            #print(f"First data validation complete.")
             #checkUnscrambledDNA = addScrambleToDnaSequence(nextCandidateDNA, scramble2)
             #assert(checkUnscrambledDNA == unscrambledDNA)
-
             scores = []
             for s in dnaLibrary: #Omer: for every strand, s, in the dna library so far, 
                 #Omer: create a complex made of just 2 dna strands: the candidate DNA and s 
-                complexToBeChecked = Complex([Strand(string=s, name=f'strand_{s}'),Strand(string=nextCandidateDNA, name=f'strand_{nextCandidateDNA}')])
+                #complexToBeChecked = Complex([Strand(string=s, name=f'strand_{s}'),Strand(string=nextCandidateDNA, name=f'strand_{nextCandidateDNA}')])
                 #Omer: note that this will not work if you throw all strands from the dna library together, since it contains every strand AND (!) its reverse complement (so there will be some extremely stable results there !)
                 #print(f"Attempting mfe call with strand {s} ")
-                tempScore = mfe(complexToBeChecked, model=MODEL_FOR_NUPACK)[0].energy 
+                tempScore = 1000 # mfe(complexToBeChecked, model=MODEL_FOR_NUPACK)[0].energy 
                 scores.append(tempScore)
-                if tempScore > STABILITY_THRESHOLD:
+                if tempScore < STABILITY_THRESHOLD:
                     break # Omer: No need to keep processing if we already witnessed a stable pair
                 #print(tempScore)
             stabilityScore = min(scores)
@@ -157,13 +154,20 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartF
             commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
         if commitable: 
             scrambledDNA = nextCandidateDNA
+            #print(f"Succeeded to commit with seed {i}.")
         else:
             i = i + 1
             #print(i)
             if i >= maximumSeed:
                 print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
                 raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity by lowering the maximal allowed TM == maximumSimilarity.")
-
+    #print(f"Commit succeeded with reported seed {i}")
+    #print(f"Scramble used: {scramble1}")
+    #print(f"Attempting data validation:")
+    #localRandom = np.random.RandomState(i)
+    #scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
+    #print(f"Data validation scramble == {scramble2}")
+    #assert(scramble1 == scramble2)
     return scrambledDNA, unscrambledDNA, i, scramble1, stabilityScore
 
 def binaryLibraryToDnaLibrary(binaryLibrary):
@@ -206,13 +210,10 @@ def dnaLibraryToBinaryUnscrambler(dnaLibrary, seeds):
         raise ValueError("Number of dna strands must match the number of seeds")
     binaryLibrary = []
     for strand, seed in zip (dnaLibrary, seeds):
-        if seed == 0:
-            binaryLibrary.append(basesToBytes(strand))
-        else:
-            localRandom = np.random.RandomState(seed)
-            scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(strand)))
-            unscrambledDNA = addScrambleToDnaSequence(strand, scramble2)
-            binaryLibrary.append(basesToBytes(unscrambledDNA))
+        localRandom = np.random.RandomState(seed)
+        scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(strand)))
+        unscrambledDNA = addScrambleToDnaSequence(strand, scramble2)
+        binaryLibrary.append(basesToBytes(unscrambledDNA))
     return binaryLibrary
     
 def bytes_to_bitstring(data: bytes) -> str:
@@ -374,6 +375,7 @@ def _encode_bits_to_dna_with_seed(bitstring: str, dna_library_context, startFrom
 def png_to_dna_chunks(png_path: str, k_bits: int):
     # Chunk is a dictionary made of: PNG details (header, checksum and other names), binary that corresponds to it, translation to DNA using the function from last time AND which seed was used
     # read the png as bytes
+    ################## Using this function ! ################
     png_bytes = Path(png_path).read_bytes()
     # Slicing the bytes acccording to how many bits we want ineach strand
     bit_chunks = build_png_bit_chunks(png_bytes, k_bits)
@@ -383,17 +385,20 @@ def png_to_dna_chunks(png_path: str, k_bits: int):
     lastUsedSeed = 0
     print(f"Number of chunks to encode: {len(bit_chunks)}")
     for c in tqdm(bit_chunks):
-        dna_strand, _, seed, _, _ = commitSingleBinaryToDnaLibrary(
+        dna_strand, unscrambled_dna, seed, scramble, _ = commitSingleBinaryToDnaLibrary(
             c['bits'],
             dnaLibrary=dna_library_context,
             seedToStartFrom = lastUsedSeed
         )
+        
         lastUsedSeed = seed
         # Builds the dna_chunks incrementally
         dna_chunks.append({
             **c,
             'dna': str(dna_strand),
             'seed': int(seed),
+            'unscrambled_dna': unscrambled_dna,
+            'scramble': scramble
         })
         # Keep both strand and reverse-complement in context, matching library rules.
         dna_library_context.append(dna_strand)
