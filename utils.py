@@ -5,28 +5,20 @@ from Bio.Seq import Seq as seq #Omer: The only place where we should be using bi
 import pandas as pd
 import zlib
 import copy
-
+from tqdm import tqdm
 # Declaring / instantiating an alignment function
 #aligner = Align.PairwiseAligner()
 #aligner.mode = 'local'
 from pathlib import Path
 from PIL import Image
 from IPython.display import display
-#AAAAAAAAAAAAGGGGGGGGGGGGGGGG
-#            CCCCCCCCCCCCCCAAAAAAAAAAAAAAAAA
-# See potential penalties to be defined here: https://biopython.org/docs/latest/Tutorial/chapter_pairwise.html#chapter-pairwise
-#aligner.match_score = 1 # Each match counts as 1
-#aligner.mismatch_score = -1
-#aligner.gap_score = 0 # No penalty or gain for gaps
-#aligner.open_gap_score = -1
-#aligner.extend_gap_score = -1
+from line_profiler import profile
 
-#from Bio.SeqUtils.MeltingTemp import Tm_NN
-#from Bio.Seq import Seq
+
 
 from nupack import pfunc, Model
 from nupack import mfe, Complex, Strand, Model
-
+MODEL_FOR_NUPACK = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK once at the beginning of life
 
 def basesToBytes(inputBases):
   if type(inputBases) != str:
@@ -108,24 +100,18 @@ def checkHomopolymer(dnaString):
 def checkGC(dnaString):
   return np.sum([1 for n in dnaString if (n=='C' or n=='G')]) / len(dnaString)
 
-def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimilarity = 70):
-    # What is K is the maximum similarity score that we allow between the candidate DNA sequence and any of the DNA sequences already in the library. 
-    # Note that the similarity score is not a distance, but a similarity, so higher is more similar, and we want to be below K.
-    # Omer: we said that what we'll use for similarity is the maximum score that biopython can find as an alignment score between the candidate DNA and ANY already existing DNA in the dna library so far.
-    # So this has to somehow take into acount the sequence length, because if for example: maximumSimilarity is 100 and the DNA strands are <100 then they can get quite similar
-    # Update: Omer: after reviewing with Ilaria, we decided to use melting temp. (tm) as an appoximation to free Gibbs energy, istead of sequence alignment
-    # What this means is higher temperature is more "similar" meaning more likely to hybradize.
-    # maximumSimilarity is now a default = 50 # Omer: so now this needs to be defined as temperature
-    
-    #similarityScore = maximumSimilarity + 1000 # Omer: what this means is that initially we set the similarity score to be very high.
-    
-    #LOW_SIMILARITY_SCORE = 20 #Omer: this what we consider non similar, given degrees in celsius
-    STABILITY_THRESHOLD = -12 #Omer: this is the threshold for stability. The lower this is, the more we allow for stable hybridization to occur.
+
+def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartFrom = 0, stabilityThreshold = None):
+    # seedToStartFrom is optional, it might speed up the run time if we don't try from 0 every time.
+    STABILITY_THRESHOLD = -30 #Omer: this is the threshold for stability. The lower this is, the more we allow for stable hybridization to occur.
+    if stabilityThreshold is not None:
+        STABILITY_THRESHOLD = stabilityThreshold
+
     MAX_HOMOPOLYMER = 8
     GC_LOW = 0.2
     GC_HIGH = 0.8
     # We're going to use seeds between 0 and maximumSeed-1 (you can replace numberOfBits with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
-    maximumSeed = 256
+    maximumSeed = 1000000
     #for s in textLibrary[1:]:
     
     unscrambledDNA = byteToBases(binaryToBeCommitted, len(binaryToBeCommitted))
@@ -134,56 +120,49 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, maximumSimil
     scramble1 = "".join(localRandom.choice(['A'], size = len(unscrambledDNA)))
     #scrambledDNA = seq(addScrambleToDnaSequence(unscrambledDNA, scramble1))
     #print(f"Attempting to commit {unscrambledDNA}")
-    i = 0
-    bestSeed = 0
+    i = seedToStartFrom
+    bestSeed = i
     commitable = False
-    
     while (i< maximumSeed) and not commitable:
-        # Get the similarity scores between the candidate and every DNA already commited to the library
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
             stabilityScore =  STABILITY_THRESHOLD + 10
+            commitable = True
         else:
-            # Omer: we are no longer using alignment,  = [aligner.score(seq(nextCandidateDNA), targetSeq) for targetSeq in dnaLibrary]
-            # Define a NUPACK complex that contains all the strands in the dna library AND the nextCandidateDNA
-            dnaLibraryANDnextCandidateDNA = dnaLibrary + [nextCandidateDNA] # Create a single list that contains everything from previous steps, i.e. dna library, AND the next candidate DNA
-            dnaLibraryAsComplex = Complex([Strand(string=s, name=f'strand_{s}') for s in dnaLibraryANDnextCandidateDNA])
-            model = Model(material='dna', celsius=37, sodium=0.05) # Create a model for NUPACK. We could actually create it only once instead of every time, but for readability I placed it here.
-            # Use the mfe function 
-            # Takes a Complex object (list of strands) as input
-            # Accepts a NUPACK model parameter
-            # Returns a list of structures sorted by free energy
-            # [0] gets the lowest energy (most stable) structure
-            # .energy extracts the ΔG value in kcal/mol
-            print(f"Attempting mfe call with library {dnaLibraryANDnextCandidateDNA} ")
-            stabilityScore = mfe(dnaLibraryAsComplex, model=model)[0].energy 
-            print(stabilityScore)
-            
-        
-        commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
-        #print(f"Attempting to commit using seed == {i}")
-        if commitable: 
-            #scrambledDNA = seq(nextCandidateDNA)
-            scrambledDNA = nextCandidateDNA
-        # The while loop will break after this
-        else:
-            # Prepare next attempt of DNA sequence
-            i = i + 1
-            # There is no real need to instantiat the rng here, just set it to a seed, but I figured this is easier to understand
             localRandom = np.random.RandomState(i)
             # Now we have a choice, either permute or one-time-pad the DNA sequence. Right now I am only supporting permutation
             scramble1 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
             #nextCandidateDNABeforeScrambling = nextCandidateDNA
             nextCandidateDNA = addScrambleToDnaSequence(unscrambledDNA, scramble1)
             # Data validation step: make sure that the sequence can be unscrambled:
-            localRandom = np.random.RandomState(i)
-            scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
-            assert(scramble1 == scramble2)
-            checkUnscrambledDNA = addScrambleToDnaSequence(nextCandidateDNA, scramble2)
-            assert(checkUnscrambledDNA == unscrambledDNA)
-        if i == maximumSeed:
-            print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
-            raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity by lowering the maximal allowed TM == maximumSimilarity.")
+            #localRandom = np.random.RandomState(i)
+            #scramble2 = "".join(localRandom.choice(['A' ,'C' ,'T' ,'G'], size = len(nextCandidateDNA)))
+            #assert(scramble1 == scramble2)
+            #checkUnscrambledDNA = addScrambleToDnaSequence(nextCandidateDNA, scramble2)
+            #assert(checkUnscrambledDNA == unscrambledDNA)
+
+            scores = []
+            for s in dnaLibrary: #Omer: for every strand, s, in the dna library so far, 
+                #Omer: create a complex made of just 2 dna strands: the candidate DNA and s 
+                complexToBeChecked = Complex([Strand(string=s, name=f'strand_{s}'),Strand(string=nextCandidateDNA, name=f'strand_{nextCandidateDNA}')])
+                #Omer: note that this will not work if you throw all strands from the dna library together, since it contains every strand AND (!) its reverse complement (so there will be some extremely stable results there !)
+                #print(f"Attempting mfe call with strand {s} ")
+                tempScore = mfe(complexToBeChecked, model=MODEL_FOR_NUPACK)[0].energy 
+                scores.append(tempScore)
+                if tempScore > STABILITY_THRESHOLD:
+                    break # Omer: No need to keep processing if we already witnessed a stable pair
+                #print(tempScore)
+            stabilityScore = min(scores)
+            #print(f"Using seed {i} got stabilityScore: {stabilityScore}")
+            commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
+        if commitable: 
+            scrambledDNA = nextCandidateDNA
+        else:
+            i = i + 1
+            #print(i)
+            if i >= maximumSeed:
+                print(f"Failed to find a seed to meet all constraints for the sequence {binaryToBeCommitted}")
+                raise Exception("Failed to encode the binary library into a DNA library with sufficient dissimilarity. Consider changing the number of possible seeds, or allowing for more similarity by lowering the maximal allowed TM == maximumSimilarity.")
 
     return scrambledDNA, unscrambledDNA, i, scramble1, stabilityScore
 
@@ -206,14 +185,16 @@ def binaryLibraryToDnaLibrary(binaryLibrary):
     # dnaLibrary - a library of dna strands, sufficiently dissimilar.
     # seeds - a list of seeds that we used to shuffle the original DNA, in order to get dissimilar dna strands.
     # scores - a list of scores that the sligner found.
-    
+    lastUsedSeed = 0
     for j, binaryCandidate in zip(range(len(binaryLibrary)),  binaryLibrary): 
         # First we try using the simple mapping in byteToBases:
-        scrambledDna, unscrambledDna, seed, scramble, score = commitSingleBinaryToDnaLibrary(binaryCandidate, dnaLibrary = dnaLibrary)
+        print("Attempting to commit binary number {j}")
+        scrambledDna, unscrambledDna, seedThatWorked, scramble, score = commitSingleBinaryToDnaLibrary(binaryCandidate, dnaLibrary = dnaLibrary, seedToStartFrom = lastUsedSeed)
+        lastUsedSeed = seedThatWorked
         dnaLibrary.append(scrambledDna)
-        dnaLibrary.append(scrambledDna.reverse_complement())
+        dnaLibrary.append(str(seq(scrambledDna).reverse_complement()))
         sourceDNAUnscrambled.append(unscrambledDna)
-        seeds.append(seed)
+        seeds.append(seedThatWorked)
         scrambles.append(scramble)
         scores.append(score)
         
@@ -374,7 +355,7 @@ def build_png_bit_chunks(png_bytes: bytes, k_bits: int):
     return all_chunks
 
 
-def _encode_bits_to_dna_with_seed(bitstring: str, dna_library_context):
+def _encode_bits_to_dna_with_seed(bitstring: str, dna_library_context, startFromSeed = 0):
     """
     Encode one bitstring and return (dna, seed).
 
@@ -385,7 +366,7 @@ def _encode_bits_to_dna_with_seed(bitstring: str, dna_library_context):
         dna_library_context = []
     scrambled_dna, _, seed, _, _ = commitSingleBinaryToDnaLibrary(
         bitstring,
-        dnaLibrary=dna_library_context
+        dnaLibrary=dna_library_context, seedToStartFrom = startFromSeed
     )
     return str(scrambled_dna), int(seed)
 
@@ -399,12 +380,15 @@ def png_to_dna_chunks(png_path: str, k_bits: int):
 
     dna_chunks = []
     dna_library_context = []
-    
-    for c in bit_chunks:
+    lastUsedSeed = 0
+    print(f"Number of chunks to encode: {len(bit_chunks)}")
+    for c in tqdm(bit_chunks):
         dna_strand, _, seed, _, _ = commitSingleBinaryToDnaLibrary(
             c['bits'],
-            dnaLibrary=dna_library_context
+            dnaLibrary=dna_library_context,
+            seedToStartFrom = lastUsedSeed
         )
+        lastUsedSeed = seed
         # Builds the dna_chunks incrementally
         dna_chunks.append({
             **c,
@@ -414,7 +398,6 @@ def png_to_dna_chunks(png_path: str, k_bits: int):
         # Keep both strand and reverse-complement in context, matching library rules.
         dna_library_context.append(dna_strand)
         dna_library_context.append(str(seq(str(dna_strand)).reverse_complement()))
-
     return dna_chunks
 
 
@@ -578,6 +561,7 @@ def update_plte_bits_in_dna_chunks(dna_chunks, new_plte_bits=None, bit_modifier=
 
     # Write modified PLTE bits back using the original subchunk sizes.
     cursor = 0
+    lastUsedSeed = 0
     for item in plte_palette_items:
         n_total = len(item['bits'])
         n_valid = item.get('valid_bits', n_total)
@@ -585,7 +569,8 @@ def update_plte_bits_in_dna_chunks(dna_chunks, new_plte_bits=None, bit_modifier=
         if len(sub_bits_valid) != n_valid:
             raise ValueError("Failed to partition updated PLTE bits into original subchunks.")
         item['bits'] = sub_bits_valid + ('0' * (n_total - n_valid))
-        item['dna'], item['seed'] = _encode_bits_to_dna_with_seed(item['bits'], dna_library_context=unchanged_context)
+        item['dna'], item['seed'] = _encode_bits_to_dna_with_seed(item['bits'], dna_library_context=unchanged_context, startFromSeed = lastUsedSeed)
+        lastUsedSeed = item['seed']
         cursor += n_valid
     if cursor != len(updated_plte_bits):
         raise ValueError("Updated PLTE bits were not fully consumed.")
@@ -601,12 +586,14 @@ def update_plte_bits_in_dna_chunks(dna_chunks, new_plte_bits=None, bit_modifier=
         raise ValueError(f"Unexpected PLTE checksum bit length: {checksum_total_len} (expected 32).")
 
     cursor = 0
+    lastUsedSeed = 0
     for item in checksum_items:
         n_total = len(item['bits'])
         n_valid = item.get('valid_bits', n_total)
         sub_bits_valid = crc_bits[cursor:cursor + n_valid]
         item['bits'] = sub_bits_valid + ('0' * (n_total - n_valid))
-        item['dna'], item['seed'] = _encode_bits_to_dna_with_seed(item['bits'], dna_library_context=unchanged_context)
+        item['dna'], item['seed'] = _encode_bits_to_dna_with_seed(item['bits'], dna_library_context=unchanged_context, startFromSeed = lastUsedSeed)
+        lastUsedSeed = item['seed']
         cursor += n_valid
 
     return target
