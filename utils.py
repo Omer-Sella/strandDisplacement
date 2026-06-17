@@ -671,3 +671,76 @@ def update_plte_entry_in_dna_chunks(dna_chunks, palette_index: int, new_rgb, in_
         bit_modifier=_modify,
         in_place=in_place
     )
+
+
+def save_dna_chunks_to_fasta(dna_chunks, output_path):
+    """
+    Save dna_chunks to a FASTA file.
+    
+    Each chunk is represented as:
+    - Header line starting with ">" containing all key-value pairs as JSON
+    - Sequence line with the 'dna' value
+    
+    Parameters
+    ----------
+    dna_chunks : list[dict]
+        List of dna chunk dictionaries from png_to_dna_chunks().
+    output_path : str
+        Path to write the FASTA file to.
+    """
+    import json
+    with open(output_path, 'w') as f:
+        for i, chunk in enumerate(dna_chunks):
+            # Extract dna separately
+            dna_value = chunk.get('dna', '')
+            # Create a copy without 'dna' for the header
+            chunk_header = {k: v for k, v in chunk.items() if k != 'dna'}
+            # Write header as JSON
+            header = ">" + json.dumps(chunk_header)
+            f.write(header + "\n")
+            # Write dna sequence
+            f.write(dna_value + "\n")
+
+
+def load_dna_chunks_from_fasta(fasta_path):
+    """
+    Load dna_chunks from a FASTA file that was saved by save_dna_chunks_to_fasta().
+    
+    Reconstructs the dna_chunks by parsing the header lines back into dictionaries
+    and extracting the DNA sequences.
+    
+    Parameters
+    ----------
+    fasta_path : str
+        Path to the FASTA file to read.
+    
+    Returns
+    -------
+    list[dict]
+        List of reconstructed dna chunk dictionaries.
+    """
+    import json
+    dna_chunks = []
+    with open(fasta_path, 'r') as f:
+        lines = f.readlines()
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith('>'):
+            # Parse header as JSON
+            header_content = line[1:]
+            chunk = json.loads(header_content)
+            
+            # Read sequence on next line
+            if i + 1 < len(lines):
+                chunk['dna'] = lines[i + 1].strip()
+                i += 2
+            else:
+                i += 1
+            
+            dna_chunks.append(chunk)
+        else:
+            i += 1
+    
+    return dna_chunks
