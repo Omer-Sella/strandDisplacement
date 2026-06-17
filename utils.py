@@ -112,10 +112,25 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartF
     GC_HIGH = 0.8
     # We're going to use seeds between 0 and maximumSeed-1 (you can replace maximumSeed with something different, but the point is store this either at the beginning of the sequence, or offline, so it should be as small as possible)
     maximumSeed = 1000000
+
+    ### seeds, scramble, one time pad explained:
+    # 0000 0000 0001 and this does not comply with constraints.
+    # We can generate a random scramble, or one time pad, which is a sequence of bits of equal length:
+    # 0101 0101 0101 = this is the scramble (OTP or one time pad in the security world)
+    # Then we can add it to the original sequence, bitwise, using mod2 addition
+    # 0000 0000 0001 = source
+    # 0101 0101 0101 = scramble
+    # 0101 0101 0100 = scrambled sequence
+    # We can recover the original sequence using the scramble:
+    # 0101 0101 0100 = scrambled sequence
+    # 0101 0101 0101 = scramble
+    # 0000 0000 0001 == the source
+    # ACTG 00 01 10 11
+    # A + A == 00 + 00 = 00
+
     unscrambledDNA = byteToBases(binaryToBeCommitted, len(binaryToBeCommitted))
     nextCandidateDNA = copy.copy(unscrambledDNA)
-    
-    
+        
     # Omer: Warning !!! if you call this function with a seedToStartFrom which is too large, you may not try to commit at all
     if seedToStartFrom >= maximumSeed:
         raise ValueError("Provided seed to start from is bigger than the maximum allowed seed.")
@@ -130,8 +145,7 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartF
         nextCandidateDNA = addScrambleToDnaSequence(unscrambledDNA, scramble1)
         if len(dnaLibrary) == 0:
             # There are no dna strands in the library, so there is no similarity problem, only GC and homopolymer
-            stabilityScore =  STABILITY_THRESHOLD + 10
-            #commitable = True
+            stabilityScore =  STABILITY_THRESHOLD + 10 # +10 over the threshold means it's not stable == not binding to other DNA
         else:    
             scores = []
             for s in dnaLibrary: #Omer: for every strand, s, in the dna library so far, 
@@ -146,7 +160,6 @@ def commitSingleBinaryToDnaLibrary(binaryToBeCommitted, dnaLibrary, seedToStartF
         commitable = (stabilityScore > STABILITY_THRESHOLD) and (checkGC(nextCandidateDNA) > GC_LOW) and (checkGC(nextCandidateDNA) < GC_HIGH) and (checkHomopolymer(nextCandidateDNA) < MAX_HOMOPOLYMER)
         if commitable: 
             scrambledDNA = nextCandidateDNA
-            #print(f"Succeeded to commit with seed {i}.")
         else:
             i = i + 1
             # Check if we exceeded the maximal allowed seed
@@ -308,6 +321,9 @@ def build_png_bit_chunks(png_bytes: bytes, k_bits: int):
             })
 
         data_bits = bytes_to_bitstring(ch['data_bytes'])
+        # We want to preserve locality meaning we want to change just the PLTE chunk of the png file, so we isolate it from all the other stuff.
+        # We also have to change the CRC which is a checksum of everything, including the PLTE chunk.
+        # | header | data1 + colour number from the plte table | data2 + colour number from the plte table | .... |PLTE table == RGB numbers + assigned colour number | | CRC data|
         if chunk_type == 'PLTE':
             # Palette is a dedicated chunk group.
             for j, sub in enumerate(split_bits(data_bits, k_bits)):
@@ -378,6 +394,10 @@ def png_to_dna_chunks(png_path: str, k_bits: int):
     print(f"Number of chunks to encode: {len(bit_chunks)}")
     for c in tqdm(bit_chunks):
         dna_strand, unscrambled_dna, seed, scramble, _ = commitSingleBinaryToDnaLibrary(
+            # dna_strand == the dna that is scrambled and complies with all constriants (gc content, homopolymers and free gibbs energy)
+            # unscrambled_dna = the original translation of the binary to nucleotides (say A = 00, C = 01 ...)
+            # seed = the seed that was used for the random dna that we're adding to the source dna
+            # scramble = the scramble used to add to the dna
             c['bits'],
             dnaLibrary=dna_library_context,
             seedToStartFrom = lastUsedSeed
